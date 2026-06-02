@@ -8,6 +8,7 @@ extension Notification.Name {
     static let initializationCompleted = Notification.Name("initializationCompleted")
     static let initializationError = Notification.Name("initializationError")
     static let onboardingCompleted = Notification.Name("onboardingCompleted")
+    static let openAddCarbsFromCarbCam = Notification.Name("openAddCarbsFromCarbCam")
 }
 
 @main struct TrioApp: App {
@@ -492,9 +493,64 @@ extension Notification.Name {
         switch components?.host {
         case "device-select-resp":
             resolver.resolve(NotificationCenter.self)!.post(name: .openFromGarminConnect, object: url)
+        case "carbs":
+            handleCarbCamURL(components: components)
         default: break
         }
     }
+
+    /// Handles `carbcam-trio://carbs?value=N&fat=N&protein=N&notes=...&source=...`
+    /// from 10BE CarbCam. Validates ranges (1..80 g each) and posts a notification
+    /// that the Home StateModel picks up to open the AddCarbs sheet prefilled.
+    /// The user always confirms via Save in the sheet - no silent logging.
+    private func handleCarbCamURL(components: URLComponents?) {
+        guard let items = components?.queryItems else { return }
+        guard let valueStr = items.first(where: { $0.name == "value" })?.value,
+              let value = Int(valueStr), value >= 1, value <= 80
+        else { return }
+
+        let fat: Int = {
+            guard let s = items.first(where: { $0.name == "fat" })?.value,
+                  let v = Int(s), v >= 0, v <= 80 else { return 0 }
+            return v
+        }()
+        let protein: Int = {
+            guard let s = items.first(where: { $0.name == "protein" })?.value,
+                  let v = Int(s), v >= 0, v <= 80 else { return 0 }
+            return v
+        }()
+        let notes = (items.first(where: { $0.name == "notes" })?.value ?? "")
+            .prefix(200)
+            .description
+
+        ExternalCarbsPrefill.store(
+            carbs: Decimal(value),
+            fat: Decimal(fat),
+            protein: Decimal(protein),
+            notes: notes
+        )
+
+        Foundation.NotificationCenter.default.post(name: .openAddCarbsFromCarbCam, object: nil)
+    }
+}
+
+/// One-shot prefill carrier for external carb intents (currently 10BE CarbCam).
+/// The producer (TrioApp.handleCarbCamURL) calls `store(...)`; the consumer
+/// (AddCarbsStateModel.subscribe) calls `consume()` which returns and clears
+/// the value in one step. The Home StateModel uses `hasValue` on cold start.
+enum ExternalCarbsPrefill {
+    private static var pending: (carbs: Decimal, fat: Decimal, protein: Decimal, notes: String)?
+
+    static func store(carbs: Decimal, fat: Decimal, protein: Decimal, notes: String) {
+        pending = (carbs, fat, protein, notes)
+    }
+
+    static func consume() -> (carbs: Decimal, fat: Decimal, protein: Decimal, notes: String)? {
+        defer { pending = nil }
+        return pending
+    }
+
+    static var hasValue: Bool { pending != nil }
 }
 
 public extension Bundle {

@@ -1134,6 +1134,11 @@ extension Home {
                     CustomProgressView(text: String(localized: "Updating IOB...", comment: "Progress text when updating IOB"))
                 }
             }
+            // CarbCam: external carbs prefill sheet, triggered by carbcam-trio:// URL.
+            // Lives on body ZStack so it works regardless of which tab is active.
+            .sheet(isPresented: $state.shouldDisplayCarbCamSheet) {
+                AddCarbs.RootView(resolver: resolver)
+            }
         }
     }
 }

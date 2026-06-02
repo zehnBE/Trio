@@ -56,6 +56,7 @@ extension Home {
         var percentage: Int = 100
         var shouldDisplayPumpSetupSheet = false
         var shouldDisplayCGMSetupSheet = false
+        var shouldDisplayCarbCamSheet = false
         var errorMessage: String?
         var errorDate: Date?
         var bolusProgress: Decimal?
@@ -163,6 +164,21 @@ extension Home {
 
             // Parallelize Setup functions
             setupHomeViewConcurrently()
+
+            // CarbCam: listen for external carb prefill requests (from URL scheme handler)
+            Foundation.NotificationCenter.default.publisher(for: .openAddCarbsFromCarbCam)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.shouldDisplayCarbCamSheet = true
+                }
+                .store(in: &subscriptions)
+
+            // Cold start: URL arrived before subscribe() ran -> open the sheet now
+            if ExternalCarbsPrefill.hasValue {
+                DispatchQueue.main.async { [weak self] in
+                    self?.shouldDisplayCarbCamSheet = true
+                }
+            }
         }
 
         private func setupHomeViewConcurrently() {

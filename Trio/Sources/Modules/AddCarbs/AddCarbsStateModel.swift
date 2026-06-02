@@ -29,6 +29,16 @@ extension AddCarbs {
             maxCarbs = settings.settings.maxCarbs
             maxFat = settings.settings.maxFat
             maxProtein = settings.settings.maxProtein
+
+            // CarbCam: consume any pending external carbs prefill (from carbcam-trio:// URL).
+            // consume() returns the value and clears the singleton in one step,
+            // so a later re-open of AddCarbs does not re-apply the same prefill.
+            if let prefill = ExternalCarbsPrefill.consume() {
+                carbs = min(prefill.carbs, maxCarbs)
+                fat = min(prefill.fat, maxFat)
+                protein = min(prefill.protein, maxProtein)
+                note = prefill.notes
+            }
         }
 
         func add() {
